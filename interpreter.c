@@ -24,7 +24,6 @@ int regs[8] = {0};
 int progMem[1000];
 size_t memsize = 1000;
 
-
 typedef enum
 {
     _err = -1,
@@ -49,13 +48,12 @@ typedef enum
 typedef struct 
 {
     aType_t arg_type;
-    unsigned int reg;
-    unsigned int mem;
-    unsigned int val;
+    int val;
 } arg_t;
 
 typedef struct 
 {
+    size_t position;
     operation_t op;
     arg_t lhs;
     arg_t rhs;
@@ -124,27 +122,28 @@ operation_t parseOp(char *instruction)
 arg_t parseArg(char *arg, unsigned int len)
 {
     arg_t tmp;
+    char *_tmp = arg;
     switch(arg[0])
     {
         case('%'):
         {
+            _tmp++;
             tmp.arg_type = reg;
-            tmp.reg = atoi(&arg[1]);
             break;
         };
         case('#'):
         {
+            _tmp++;
             tmp.arg_type = mem;
-            tmp.mem = atoi(arg);
             break;
         };
         default:
         {
             tmp.arg_type = val;
-            tmp.val = atoi(arg);
             break;
         }
     }
+    tmp.val = atoi(_tmp);
     return tmp;
 }
 
@@ -198,18 +197,93 @@ instruction_t lintLine(char *line)
 
 // ======================================================================
 
+void infoFromOp(instruction_t op, char **op_t, char **lhs_t, char **rhs_t)
+{
+
+    switch(op.op)
+    {
+        default: {
+            *op_t = "err";
+            break;
+        }
+        case(_ldr): {
+            *op_t = "ldr";
+            break;
+        }
+        case(_sto): {
+            *op_t = "sto";
+            break;
+        }
+        case(_add): {
+            *op_t = "add";
+            break;
+        }
+        case(_sub): {
+            *op_t = "sub";
+            break;
+        }
+        case(_mul): {
+            *op_t = "mul";
+            break;
+        }
+        case(_div): {
+            *op_t = "div";
+            break;
+        }
+        case(_inV): {
+            *op_t = "inV";
+            break;
+        }
+        case(_out): {
+            *op_t = "out";
+            break;
+        }
+        case(_jnz): {
+            *op_t = "jnz";
+            break;
+        }
+    }
+
+    switch(op.lhs.arg_type)
+    {
+        case(mem): {
+            *lhs_t = "mem";
+        }
+        case(reg): {
+            *lhs_t = "reg";
+        }
+        case(val): {
+            *lhs_t = "val";
+        }
+    }
+
+    switch(op.rhs.arg_type)
+    {
+        case(mem): {
+            *rhs_t = "mem";
+        }
+        case(reg): {
+            *rhs_t = "reg";
+        }
+        case(val): {
+            *rhs_t = "val";
+        }
+    }
+
+};
+
 int getVal(arg_t op)
 {
     switch(op.arg_type)
     {
         case(mem):
         {
-            return progMem[op.mem]; 
+            return progMem[op.val]; 
             break;
         }
         case(reg):
         {
-            return regs[op.reg];
+            return regs[op.val];
             break;
         }
         case(val):
@@ -226,12 +300,12 @@ void setVal(arg_t op, int _val)
     {
         case(mem):
         {
-            progMem[op.mem] = _val; 
+            progMem[op.val] = _val; 
             break;
         }
         case(reg):
         {
-            regs[op.reg] = _val;
+            regs[op.val] = _val;
             break;
         }
         case(val):
@@ -325,12 +399,21 @@ int main(int argc, char** argv)
     while(fgets(fBuf, maxLineLen, fPtr))
     {
         instruction_t tmp = lintLine(fBuf);
-        fwrite(&tmp, sizeof(instruction_t), 1, outPtr);
+        tmp.position = lineN;
+        if (tmp.op != _err)
+        {
+            fwrite(&tmp, sizeof(instruction_t), 1, outPtr);
 
-        if (verbose)
-            printf("line[%06d]: %s\n", lineN, fBuf);
-        
-        lineN++;
+            if (verbose)
+            {
+                char *rhst = "err";
+                char *lhst = "err";
+                char *opt  = "err";
+                infoFromOp(tmp, &opt, &lhst, &rhst); 
+                printf("\nline[%06d]: op: %s\nlhs type: %s, lhs value: %d\nrhs type: %s, rhs value: %d\n", lineN, opt, lhst, tmp.lhs.val, rhst, tmp.rhs.val);
+            }
+            lineN++;
+        }
     }
 
     fclose(outPtr);
@@ -346,64 +429,71 @@ int main(int argc, char** argv)
 
     while (!feof(outPtr))
     {
-        if ( !feof(outPtr) )
-        {
-            instruction_t iCurrent;
-            fread(&iCurrent, sizeof(instruction_t), 1, outPtr);
-            switch(iCurrent.op)
-            {
-                case(_err):
-                {
-                    break;
-                }
-                case(_ldr):
-                {
-                    regs[iCurrent.lhs.reg] = getVal(iCurrent.rhs);
-                    break;
-                }
-                case(_sto):
-                {
-                    setVal(iCurrent.lhs, getVal(iCurrent.rhs));
-                    break;
-                }
-                case(_add):
-                {
-                    setVal(iCurrent.lhs, getVal(iCurrent.lhs) + getVal(iCurrent.rhs));
-                    break;
-                }
-                case(_sub):
-                {
-                    setVal(iCurrent.lhs, getVal(iCurrent.lhs) - getVal(iCurrent.rhs));
-                    break;
-                }
-                case(_mul):
-                {
-                    setVal(iCurrent.lhs, getVal(iCurrent.lhs) * getVal(iCurrent.rhs));
-                    break;
-                }
-                case(_div):
-                {
-                    setVal(iCurrent.lhs, getVal(iCurrent.lhs) / getVal(iCurrent.rhs));
-                    break;
-                }
-                case(_inV):
-                {
-                    int tmp;
-                    scanf("%d", &tmp);
-                    setVal(iCurrent.lhs, tmp);
-                    break;
-                }
-                case(_out):
-                {
-                    printf("%d\n", getVal(iCurrent.lhs));
-                    break;
-                }
-                case(_jnz):
-                {
-                    break;
-                }
-            }
+        instruction_t iCurrent;
+        fread(&iCurrent, sizeof(instruction_t), 1, outPtr);
 
+        switch(iCurrent.op)
+        {
+            case(_err):
+            {
+                break;
+            }
+            case(_ldr):
+            {
+                regs[iCurrent.lhs.val] = getVal(iCurrent.rhs);
+                break;
+            }
+            case(_sto):
+            {
+                setVal(iCurrent.lhs, getVal(iCurrent.rhs));
+                break;
+            }
+            case(_add):
+            {
+                setVal(iCurrent.lhs, getVal(iCurrent.lhs) + getVal(iCurrent.rhs));
+                break;
+            }
+            case(_sub):
+            {
+                setVal(iCurrent.lhs, getVal(iCurrent.lhs) - getVal(iCurrent.rhs));
+                break;
+            }
+            case(_mul):
+            {
+                setVal(iCurrent.lhs, getVal(iCurrent.lhs) * getVal(iCurrent.rhs));
+                break;
+            }
+            case(_div):
+            {
+                setVal(iCurrent.lhs, getVal(iCurrent.lhs) / getVal(iCurrent.rhs));
+                break;
+            }
+            case(_inV):
+            {
+                int tmp;
+                scanf("%d", &tmp);
+                setVal(iCurrent.lhs, tmp);
+                break;
+            }
+            case(_out):
+            {
+                printf("%d\n", getVal(iCurrent.lhs));
+                break;
+            }
+            case(_jnz):
+            {
+                if ( getVal(iCurrent.lhs) != 0 ) { 
+                    instruction_t _tmpInst;
+                    rewind(outPtr);
+                    for ( int i = 0; i < getVal(iCurrent.rhs); i++ )
+                    {
+                        fread(&_tmpInst, sizeof(instruction_t), 1, outPtr);
+                    }
+                }
+                break;
+            }
+            if (verbose)
+                printf("%d\n", iCurrent.position);
         }
     }    
 
